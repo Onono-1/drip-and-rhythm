@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 logger = logging.getLogger(__name__)
 
-ARTWORK_RENDERER_VERSION = "v3"
+ARTWORK_RENDERER_VERSION = "v4"
 
 FORMAT_SPECS: dict[str, tuple[int, int]] = {
     "story": (1080, 1920),
@@ -97,16 +97,17 @@ def build_artwork_cache_key(
     event,
     format_name: str,
     nickname: str | None = None,
-    show_nickname: bool = False,
+    show_nickname: bool = True,
     invitation_id: str | None = None,
     sharing_version: int | None = None,
 ) -> str:
     """
     Deterministic, non-sensitive SHA-256 cache identifier.
-    - Anonymous mode shares one cached PNG per (format, event_config) across all guests.
-    - Personalized mode scopes to the active nickname, sharing_version, and event_config.
+    Always includes the guest's registered nickname, sharing_version, format,
+    renderer version, and event configuration so cached PNGs stay accurate.
     """
-    active_nickname = (nickname or "").strip() if show_nickname else ""
+    _ = show_nickname  # Personalized nickname is always displayed on promotional artwork
+    active_nickname = (nickname or "").strip()
     event_sig = "|".join(
         [
             ARTWORK_RENDERER_VERSION,
@@ -121,12 +122,9 @@ def build_artwork_cache_key(
             str(getattr(event, "age_restriction", "")),
         ]
     )
-    if not active_nickname:
-        raw = f"anon|{format_name}|{event_sig}"
-    else:
-        inv_part = str(invitation_id or "")
-        ver_part = str(sharing_version if sharing_version is not None else 1)
-        raw = f"pers|{format_name}|{event_sig}|{inv_part}|{ver_part}|{active_nickname}"
+    inv_part = str(invitation_id or "")
+    ver_part = str(sharing_version if sharing_version is not None else 1)
+    raw = f"pers|{format_name}|{event_sig}|{inv_part}|{ver_part}|{active_nickname}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:36]
 
 
@@ -890,7 +888,7 @@ def get_or_render_promotional_artwork(
     event,
     format_name: str,
     nickname: str | None = None,
-    show_nickname: bool = False,
+    show_nickname: bool = True,
     invitation_id: str | None = None,
     sharing_version: int | None = None,
 ) -> RenderedArtworkResult:
@@ -902,14 +900,15 @@ def get_or_render_promotional_artwork(
     if format_name not in FORMAT_SPECS:
         raise ValueError(f"Unsupported artwork format: {format_name}")
 
+    _ = show_nickname
     t0 = time.perf_counter()
-    active_nickname = (nickname or "").strip() if show_nickname else ""
-    mode_label = "personalized" if active_nickname else "anonymous"
+    active_nickname = (nickname or "").strip()
+    mode_label = "personalized"
     cache_key = build_artwork_cache_key(
         event=event,
         format_name=format_name,
-        nickname=nickname,
-        show_nickname=show_nickname,
+        nickname=active_nickname,
+        show_nickname=True,
         invitation_id=invitation_id,
         sharing_version=sharing_version,
     )
@@ -991,7 +990,7 @@ def render_promotional_artwork(
     event,
     format_name: str,
     nickname: str | None = None,
-    show_nickname: bool = False,
+    show_nickname: bool = True,
     invitation_id: str | None = None,
     sharing_version: int | None = None,
 ) -> bytes:

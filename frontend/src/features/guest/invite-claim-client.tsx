@@ -267,7 +267,7 @@ export function InviteClaimClient({
               <p className="flex items-center gap-2">
                 <Mail className="h-3.5 w-3.5 shrink-0 text-amber" aria-hidden="true" />
                 <span>
-                  Only your nickname, email, and gender are collected.{" "}
+                  Your nickname appears on your promotional artwork and public sharing page; your email and gender stay private.{" "}
                   <Link href="/privacy" className="text-champagne underline hover:text-ivory">
                     Privacy notice
                   </Link>

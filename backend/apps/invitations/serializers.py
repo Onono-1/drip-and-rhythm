@@ -169,7 +169,7 @@ def serialize_claim_receipt_payload(invitation: Invitation) -> dict[str, object]
         "reference": invitation.reference,
         "claimed_at": invitation.claimed_at,
         "email_delivery_status": latest_delivery.status if latest_delivery else "PENDING",
-        "show_nickname_publicly": invitation.show_nickname_publicly,
+        "show_nickname_publicly": True,
         "public_sharing_enabled": invitation.public_sharing_enabled,
         "event_sharing_enabled": event.public_sharing_enabled,
         "sharing_version": v,

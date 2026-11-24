@@ -38,7 +38,14 @@ def test_artwork_formats_caching_coalescing_privacy_revocation_and_admission_pri
 
         event = c1.invitation.event
 
-        # 1. All 4 formats generate exact dimensions + cached repeat is instant
+        # 1. All 4 formats generate personalized artwork with exact dimensions + cached repeat is instant
+        assert artwork_mod.ARTWORK_RENDERER_VERSION == "v4"
+        assert c1.invitation.show_nickname_publicly is True
+
+        # Simulate a legacy production invitation that previously had show_nickname_publicly=False
+        c2.invitation.show_nickname_publicly = False
+        c2.invitation.save(update_fields=["show_nickname_publicly", "updated_at"])
+
         timings: dict[str, tuple[float, float]] = {}
         for fmt, expected_size in FORMAT_SPECS.items():
             t0 = time.perf_counter()
@@ -46,7 +53,6 @@ def test_artwork_formats_caching_coalescing_privacy_revocation_and_admission_pri
                 event=event,
                 format_name=fmt,
                 nickname=c1.invitation.nickname,
-                show_nickname=False,
                 invitation_id=str(c1.invitation.id),
                 sharing_version=c1.invitation.sharing_version,
             )
@@ -60,7 +66,6 @@ def test_artwork_formats_caching_coalescing_privacy_revocation_and_admission_pri
                 event=event,
                 format_name=fmt,
                 nickname=c1.invitation.nickname,
-                show_nickname=False,
                 invitation_id=str(c1.invitation.id),
                 sharing_version=c1.invitation.sharing_version,
             )
@@ -71,23 +76,37 @@ def test_artwork_formats_caching_coalescing_privacy_revocation_and_admission_pri
 
         print("OBSERVED_ARTWORK_TIMINGS_MS:", {k: (round(v[0], 1), round(v[1], 2)) for k, v in timings.items()})
 
-        # 2. Second guest with anonymous mode reuses shared anonymous cache without rendering
-        with patch.object(artwork_mod, "_render_png_bytes_uncached", wraps=artwork_mod._render_png_bytes_uncached) as spy:
-            res_guest2 = get_or_render_promotional_artwork(
-                event=event,
-                format_name="story",
-                nickname=c2.invitation.nickname,
-                show_nickname=False,
-                invitation_id=str(c2.invitation.id),
-                sharing_version=c2.invitation.sharing_version,
-            )
-            assert res_guest2.cache_hit is True
-            assert spy.call_count == 0
+        # 2. Legacy invitation (even with show_nickname_publicly=False in DB) still renders its own
+        # personalized artwork & returns its nickname on /api/share/ without exposing email/gender
+        anon_client = APIClient()
+        legacy_detail = anon_client.get(f"/api/share/{c2.raw_share_token}/")
+        assert legacy_detail.status_code == 200
+        legacy_json = legacy_detail.json()
+        assert legacy_json["nickname"] == "Musa"
+        assert legacy_json["show_nickname_publicly"] is True
+        assert "guest_email" not in legacy_json
+        assert "gender" not in legacy_json
+
+        res_guest2 = get_or_render_promotional_artwork(
+            event=event,
+            format_name="story",
+            nickname=c2.invitation.nickname,
+            show_nickname=False,  # Ignored: always personalized
+            invitation_id=str(c2.invitation.id),
+            sharing_version=c2.invitation.sharing_version,
+        )
+        assert res_guest2.cache_hit is False
+        assert res_guest2.cache_key != artwork_mod.build_artwork_cache_key(
+            event=event,
+            format_name="story",
+            nickname=c1.invitation.nickname,
+            invitation_id=str(c1.invitation.id),
+            sharing_version=c1.invitation.sharing_version,
+        )
 
         # 3. Concurrent identical personalized requests coalesce into a SINGLE render
-        c1.invitation.show_nickname_publicly = True
         c1.invitation.sharing_version += 1
-        c1.invitation.save(update_fields=["show_nickname_publicly", "sharing_version", "updated_at"])
+        c1.invitation.save(update_fields=["sharing_version", "updated_at"])
 
         orig_render = artwork_mod._render_png_bytes_uncached
         render_calls = 0
@@ -119,7 +138,6 @@ def test_artwork_formats_caching_coalescing_privacy_revocation_and_admission_pri
             assert len({r.png_bytes for r in results}) == 1
 
         # 4. HTTP ETag / download / revocation / sharing-disabled checks BEFORE serving cache
-        anon_client = APIClient()
         img_url = f"/api/share/{c1.raw_share_token}/image/?format=story&v={c1.invitation.sharing_version}"
         r_ok = anon_client.get(img_url)
         assert r_ok.status_code == 200

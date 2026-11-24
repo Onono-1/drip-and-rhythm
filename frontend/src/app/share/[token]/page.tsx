@@ -34,11 +34,10 @@ export async function generateMetadata({
     };
   }
 
-  const { event, nickname, show_nickname_publicly, sharing_version } = res.data;
-  const title =
-    show_nickname_publicly && nickname
-      ? `${nickname} is on the list — ${event.name}`
-      : `The Invitation is Secured — ${event.name}`;
+  const { event, nickname, sharing_version } = res.data;
+  const title = nickname
+    ? `${nickname} is on the list — ${event.name}`
+    : `The Invitation is Secured — ${event.name}`;
   const description = `${event.tagline}. ${formatEventDate(event.event_date)} · ${event.location}. ${event.hashtag}`;
   const ogImageUrl = `${siteUrl}/api/share/${encodeURIComponent(token)}/image/?format=preview&v=${sharing_version}`;
   const canonicalUrl = `${siteUrl}/share/${encodeURIComponent(token)}`;
@@ -133,7 +132,7 @@ export default async function PublicSharePage({
     );
   }
 
-  const { event, nickname, show_nickname_publicly } = res.data;
+  const { event, nickname } = res.data;
   const formattedDate = formatEventDate(event.event_date);
 
   return (
@@ -169,7 +168,7 @@ export default async function PublicSharePage({
               <h1 className="font-display mt-1 text-4xl leading-[1.02] tracking-wide text-ivory uppercase sm:text-5xl">
                 THE INVITATION IS SECURED.
               </h1>
-              {show_nickname_publicly && nickname && (
+              {nickname && (
                 <p className="mt-3 text-lg font-semibold text-champagne">
                   {nickname} is officially on the list for {event.name}.
                 </p>

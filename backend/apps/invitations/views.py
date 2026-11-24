@@ -428,10 +428,9 @@ class ClaimReceiptSharingView(APIView):
                     message="Invitation is no longer active.",
                     status_code=status.HTTP_403_FORBIDDEN,
                 )
-            if "show_nickname_publicly" in serializer.validated_data:
-                inv.show_nickname_publicly = serializer.validated_data["show_nickname_publicly"]
             if "public_sharing_enabled" in serializer.validated_data:
                 inv.public_sharing_enabled = serializer.validated_data["public_sharing_enabled"]
+            inv.show_nickname_publicly = True
             inv.sharing_version += 1
             inv.save(update_fields=["show_nickname_publicly", "public_sharing_enabled", "sharing_version", "updated_at"])
 
@@ -484,8 +483,8 @@ class PublicShareDetailView(APIView):
         v = inv.sharing_version
         data = {
             "event": PublicEventSerializer(inv.event).data,
-            "nickname": inv.nickname if inv.show_nickname_publicly else None,
-            "show_nickname_publicly": inv.show_nickname_publicly,
+            "nickname": inv.nickname,
+            "show_nickname_publicly": True,
             "sharing_version": v,
             "share_url": build_share_url(token),
             "artwork_urls": {
@@ -518,7 +517,7 @@ class PublicShareImageView(APIView):
             event=inv.event,
             format_name=fmt,
             nickname=inv.nickname,
-            show_nickname=inv.show_nickname_publicly,
+            show_nickname=True,
             invitation_id=str(inv.id),
             sharing_version=inv.sharing_version,
         )
@@ -536,7 +535,7 @@ class PublicShareImageView(APIView):
                 event=inv.event,
                 format_name=fmt,
                 nickname=inv.nickname,
-                show_nickname=inv.show_nickname_publicly,
+                show_nickname=True,
                 invitation_id=str(inv.id),
                 sharing_version=inv.sharing_version,
             )

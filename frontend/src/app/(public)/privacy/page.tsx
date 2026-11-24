@@ -46,7 +46,7 @@ export default async function PrivacyPage() {
               What Information Is Collected
             </h2>
             <p className="mt-2">
-              When you claim a valid invitation link, we collect only your chosen <strong className="text-ivory">nickname</strong> (1–50 characters) and <strong className="text-ivory">email address</strong>. We do not collect legal names, phone numbers, physical addresses, dates of birth, or guest passwords.
+              When you claim a valid invitation link, we collect only your chosen <strong className="text-ivory">nickname</strong> (1–50 characters), <strong className="text-ivory">email address</strong>, and <strong className="text-ivory">gender</strong>. We do not collect legal names, phone numbers, physical addresses, dates of birth, or guest passwords.
             </p>
           </section>
 
@@ -70,10 +70,10 @@ export default async function PrivacyPage() {
 
           <section className="pt-8">
             <h2 className="font-display text-xl tracking-wide text-champagne uppercase">
-              Optional Public Nickname Visibility
+              Promotional Artwork &amp; Public Sharing Page
             </h2>
             <p className="mt-2">
-              Promotional &ldquo;Invitation Secured&rdquo; social graphics default to <strong className="text-ivory">anonymous</strong>. Your nickname is included on shared promotional graphics or your public sharing page only if you explicitly enable that option. Note that once you download or post an image to external social platforms, external copies and social platform caches cannot be remotely deleted.
+              Your chosen <strong className="text-ivory">nickname</strong> is displayed on your promotional &ldquo;Invitation Secured&rdquo; graphics and public sharing page. Your email address, gender, admission QR code, and invitation reference are never shown publicly. You can disable your public sharing webpage anytime from your confirmation page, though images already downloaded or posted externally cannot be remotely removed.
             </p>
           </section>
 

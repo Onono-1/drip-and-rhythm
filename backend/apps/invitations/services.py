@@ -447,7 +447,7 @@ def claim_invitation(
                 inv.share_token_digest = hash_token(raw_share_token)
                 inv.share_token_encrypted = encrypt_token(raw_share_token)
                 inv.sharing_version = 1
-                inv.show_nickname_publicly = False
+                inv.show_nickname_publicly = True
                 inv.public_sharing_enabled = True
                 inv.save()
         except IntegrityError as exc:

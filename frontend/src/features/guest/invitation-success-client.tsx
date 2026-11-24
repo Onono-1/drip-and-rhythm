@@ -111,7 +111,6 @@ export function InvitationSuccessClient({
   };
 
   const updatePreference = async (patch: {
-    show_nickname_publicly?: boolean;
     public_sharing_enabled?: boolean;
   }) => {
     if (!receipt) return;
@@ -280,35 +279,15 @@ export function InvitationSuccessClient({
               </p>
             </div>
 
-            {/* Privacy Controls */}
-            <div className="space-y-4 rounded-md border border-champagne/20 bg-midnight/80 p-4">
-              <label className="flex cursor-pointer items-start justify-between gap-4">
-                <div>
-                  <span className="block text-sm font-semibold text-ivory">
-                    Include my nickname on shared artwork
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-relaxed text-ivory-muted">
-                    Enabling displays &ldquo;{receipt.nickname}&rdquo; publicly on your promotional graphic and share webpage. Already downloaded or posted images cannot be remotely removed.
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={receipt.show_nickname_publicly}
-                  disabled={savingPref}
-                  onChange={(e) => void updatePreference({ show_nickname_publicly: e.target.checked })}
-                  className="mt-1 h-5 w-5 shrink-0 accent-burnt"
-                />
-              </label>
-
-              <hr className="border-champagne/15" />
-
+            {/* Public Share Link Control */}
+            <div className="rounded-md border border-champagne/20 bg-midnight/80 p-4">
               <label className="flex cursor-pointer items-start justify-between gap-4">
                 <div>
                   <span className="block text-sm font-semibold text-ivory">
                     Enable public shareable webpage
                   </span>
                   <span className="mt-0.5 block text-xs leading-relaxed text-ivory-muted">
-                    Allows friends to view your Invitation Secured announcement link. Turn off anytime to deactivate the link.
+                    Allows friends to view your Invitation Secured announcement page with &ldquo;{receipt.nickname}&rdquo;. Turn off anytime to deactivate the link.
                   </span>
                 </div>
                 <input
