@@ -1,7 +1,7 @@
 "use client";
 
 import confetti from "canvas-confetti";
-import { Check, Copy, Download, Maximize2, Mail, Share2, Sparkles, X } from "lucide-react";
+import { Check, Copy, Download, Mail, Share2, Sparkles } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -12,37 +12,12 @@ import { Button, StatusBadge } from "@/components/ui/primitives";
 import { apiFetch, formatEventDate } from "@/lib/api-client";
 import type { ArtworkFormat, ClaimReceiptPayload, EmailDeliveryStatus } from "@/types/api";
 
+import { ARTWORK_FORMATS, ArtworkPreviewFrame, useLazyArtwork } from "./artwork-preview-frame";
+
 const PREPARED_CAPTIONS = [
   "Invitation secured. The drip is ready, the rhythm is calling. See you on December 5th. #DripAndRhythm",
   "I'm officially on the list. An affair of fashion, music and culture awaits. #DripAndRhythm",
   "The invitation is secured. Now it's time to plan the drip. #DripAndRhythm",
-];
-
-// Only the three guest-downloadable social formats (Open Graph 1200x630 is automatic for link previews)
-const FORMAT_OPTIONS: Array<{
-  id: Exclude<ArtworkFormat, "preview">;
-  label: string;
-  ratio: string;
-  aspectClass: string;
-}> = [
-  {
-    id: "story",
-    label: "Story (9:16)",
-    ratio: "1080 × 1920",
-    aspectClass: "aspect-[9/16] max-w-[360px]",
-  },
-  {
-    id: "portrait",
-    label: "Portrait (4:5)",
-    ratio: "1080 × 1350",
-    aspectClass: "aspect-[4/5] max-w-[440px]",
-  },
-  {
-    id: "square",
-    label: "Square (1:1)",
-    ratio: "1080 × 1080",
-    aspectClass: "aspect-square max-w-[460px]",
-  },
 ];
 
 function describeEmailStatus(status: EmailDeliveryStatus, email: string) {
@@ -83,11 +58,15 @@ export function InvitationSuccessClient({
   const prefersReducedMotion = useReducedMotion();
   const [receipt, setReceipt] = useState<ClaimReceiptPayload | null>(initialReceipt);
   const [selectedFormat, setSelectedFormat] = useState<Exclude<ArtworkFormat, "preview">>("story");
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [savingPref, setSavingPref] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const activeFormatMeta = ARTWORK_FORMATS.find((f) => f.id === selectedFormat) ?? ARTWORK_FORMATS[0]!;
+  const currentArtworkUrl = receipt?.artwork_urls[selectedFormat];
+  const artwork = useLazyArtwork(currentArtworkUrl);
+  const artworkReady = artwork.status === "ready" && Boolean(artwork.blob);
 
   useEffect(() => {
     if (!receipt || prefersReducedMotion) return;
@@ -111,7 +90,7 @@ export function InvitationSuccessClient({
     let polls = 0;
     const timer = window.setInterval(async () => {
       polls += 1;
-      if (polls > 6) {
+      if (polls > 4) {
         window.clearInterval(timer);
         return;
       }
@@ -121,7 +100,7 @@ export function InvitationSuccessClient({
       } catch {
         window.clearInterval(timer);
       }
-    }, 4000);
+    }, 6000);
     return () => window.clearInterval(timer);
   }, [receipt]);
 
@@ -152,16 +131,13 @@ export function InvitationSuccessClient({
   };
 
   const handleNativeShareArtwork = async () => {
-    if (!receipt) return;
-    const imgUrl = receipt.artwork_urls[selectedFormat];
-    if (!imgUrl) return;
+    if (!receipt || !artwork.blob) return;
     setSharingBusy(true);
     setFeedbackMsg(null);
 
     try {
-      const resp = await fetch(imgUrl, { credentials: "same-origin" });
-      const blob = await resp.blob();
-      const file = new File([blob], `drip-and-rhythm-${selectedFormat}.png`, { type: "image/png" });
+      const filename = `drip-and-rhythm-${selectedFormat}.png`;
+      const file = new File([artwork.blob], filename, { type: "image/png" });
 
       if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
         await navigator.share({
@@ -176,10 +152,7 @@ export function InvitationSuccessClient({
           url: receipt.share_url,
         });
       } else {
-        const link = document.createElement("a");
-        link.href = `${imgUrl}&download=1`;
-        link.download = `drip-and-rhythm-${selectedFormat}.png`;
-        link.click();
+        artwork.triggerDownload(filename);
         setFeedbackMsg("Native file sharing is unavailable here — started PNG download instead.");
       }
     } catch (err) {
@@ -211,8 +184,6 @@ export function InvitationSuccessClient({
   }
 
   const emailInfo = describeEmailStatus(receipt.email_delivery_status, receipt.guest_email);
-  const activeFormatMeta = FORMAT_OPTIONS.find((f) => f.id === selectedFormat) ?? FORMAT_OPTIONS[0]!;
-  const currentArtworkUrl = receipt.artwork_urls[selectedFormat];
 
   return (
     <div className="amber-stage-glow film-grain min-h-dvh">
@@ -266,10 +237,10 @@ export function InvitationSuccessClient({
 
         {/* Promotional Artwork Showcase & Controls */}
         <section className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-          {/* Generous Uncropped Artwork Showcase */}
+          {/* Lazy Uncropped Artwork Showcase */}
           <div className="flex flex-col items-center lg:col-span-6">
-            <div className="flex w-full flex-wrap items-center justify-center gap-2">
-              {FORMAT_OPTIONS.map((fmt) => (
+            <div className="mb-5 flex w-full flex-wrap items-center justify-center gap-2">
+              {ARTWORK_FORMATS.map((fmt) => (
                 <button
                   key={fmt.id}
                   type="button"
@@ -285,36 +256,17 @@ export function InvitationSuccessClient({
               ))}
             </div>
 
-            <div className={`relative mt-5 w-full ${activeFormatMeta.aspectClass}`}>
-              {currentArtworkUrl ? (
-                <button
-                  type="button"
-                  onClick={() => setLightboxOpen(true)}
-                  aria-label="Enlarge promotional artwork preview"
-                  className="group relative block h-full w-full cursor-zoom-in overflow-hidden rounded-lg border border-champagne/30 bg-midnight shadow-[0_24px_64px_rgba(0,0,0,0.6)]"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    key={`${currentArtworkUrl}-${receipt.sharing_version}`}
-                    src={currentArtworkUrl}
-                    alt={`DRIP & RHYTHM ${activeFormatMeta.label} promotional artwork`}
-                    className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.015]"
-                  />
-                  <span className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-md bg-midnight/85 px-2.5 py-1.5 text-[11px] font-semibold text-champagne backdrop-blur-xs">
-                    <Maximize2 className="h-3.5 w-3.5 text-amber" aria-hidden="true" />
-                    Tap to enlarge
-                  </span>
-                </button>
-              ) : (
-                <div className="flex h-72 items-center justify-center rounded border border-champagne/20 text-xs text-ivory-muted">
-                  Artwork unavailable
-                </div>
-              )}
-            </div>
-
-            <p className="mt-3 text-center text-xs text-ivory-muted">
-              <span className="font-semibold text-champagne">{activeFormatMeta.ratio}px</span> · Safe to share on your favourite social platforms.
-            </p>
+            <ArtworkPreviewFrame
+              aspectClass={activeFormatMeta.aspectClass}
+              ratioLabel={activeFormatMeta.ratio}
+              formatLabel={activeFormatMeta.label}
+              altText={`DRIP & RHYTHM ${activeFormatMeta.label} promotional artwork`}
+              status={artwork.status}
+              objectUrl={artwork.objectUrl}
+              isSlow={artwork.isSlow}
+              isPermanentError={artwork.isPermanentError}
+              onRetry={artwork.retry}
+            />
           </div>
 
           {/* Controls, Privacy & Captions */}
@@ -375,22 +327,20 @@ export function InvitationSuccessClient({
               </p>
             )}
 
-            {/* Download & Share Buttons */}
+            {/* Download & Share Buttons (artwork actions disabled until ready; share link independent) */}
             <div className="flex flex-wrap gap-3">
-              {currentArtworkUrl && (
-                <a
-                  href={`${currentArtworkUrl}&download=1`}
-                  download={`drip-and-rhythm-${selectedFormat}.png`}
-                >
-                  <Button size="md">
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    Download {selectedFormat} PNG
-                  </Button>
-                </a>
-              )}
+              <Button
+                size="md"
+                disabled={!artworkReady}
+                onClick={() => artwork.triggerDownload(`drip-and-rhythm-${selectedFormat}.png`)}
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download {selectedFormat} PNG
+              </Button>
               <Button
                 variant="secondary"
                 size="md"
+                disabled={!artworkReady}
                 loading={sharingBusy}
                 onClick={() => void handleNativeShareArtwork()}
               >
@@ -451,40 +401,6 @@ export function InvitationSuccessClient({
           </div>
         </section>
       </main>
-
-      {/* Full-Size Artwork Enlargement Lightbox */}
-      {lightboxOpen && currentArtworkUrl && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Full-size promotional artwork preview"
-          onClick={() => setLightboxOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-xs"
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(false)}
-            aria-label="Close enlarged preview"
-            className="fixed top-4 right-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-champagne/40 bg-midnight/90 text-ivory hover:border-amber"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[92dvh] max-w-[92vw] flex-col items-center gap-3"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={currentArtworkUrl}
-              alt={`Enlarged ${activeFormatMeta.label} promotional artwork`}
-              className="max-h-[84dvh] w-auto rounded-md border border-champagne/30 object-contain shadow-2xl"
-            />
-            <p className="text-xs text-champagne">
-              {activeFormatMeta.label} · {activeFormatMeta.ratio}px
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

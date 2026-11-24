@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Sparkles } from "lucide-react";
+import { Calendar, MapPin, RefreshCw, Sparkles } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -7,8 +7,11 @@ import { WhatsAppContactLinks } from "@/components/brand/whatsapp-contacts";
 import { Button } from "@/components/ui/primitives";
 import { PublicShareArtworkShowcase } from "@/features/guest/public-share-actions";
 import { formatEventDate } from "@/lib/api-client";
-import { fetchPublicEventServer, fetchServerJson, getPublicSiteUrl } from "@/lib/server-api";
-import type { PublicSharePayload } from "@/types/api";
+import {
+  fetchPublicShareServer,
+  getFallbackPublicEvent,
+  getPublicSiteUrl,
+} from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +22,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { token } = await params;
   const siteUrl = getPublicSiteUrl();
-  const res = await fetchServerJson<PublicSharePayload>(
-    `/api/share/${encodeURIComponent(token)}/`,
-  );
+  const res = await fetchPublicShareServer(token);
 
   if (!res.ok || !res.data) {
     return {
-      title: "Shared Invitation Unavailable",
+      title:
+        res.status >= 500
+          ? "DRIP & RHYTHM — Shared Invitation"
+          : "Shared Invitation Unavailable",
       robots: { index: false, follow: false },
     };
   }
@@ -74,12 +78,37 @@ export default async function PublicSharePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const res = await fetchServerJson<PublicSharePayload>(
-    `/api/share/${encodeURIComponent(token)}/`,
-  );
+  const res = await fetchPublicShareServer(token);
 
   if (!res.ok || !res.data) {
-    const fallbackEvent = await fetchPublicEventServer();
+    const fallbackEvent = getFallbackPublicEvent();
+    const isTransientFailure = res.status >= 500;
+
+    if (isTransientFailure) {
+      return (
+        <div className="amber-stage-glow film-grain flex min-h-dvh flex-col items-center justify-center px-6 py-20 text-center">
+          <OrganizerWordmark organizers={fallbackEvent.organizers} />
+          <h1 className="font-display mt-5 text-4xl tracking-wide text-ivory uppercase sm:text-5xl">
+            MOMENTARILY BUSY
+          </h1>
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-ivory-muted sm:text-base">
+            We couldn&apos;t load this shared invitation page right now. Your invitation remains secured — refresh in a moment to view the page.
+          </p>
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            <a href={`/share/${encodeURIComponent(token)}`}>
+              <Button>
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Try Again
+              </Button>
+            </a>
+            <Link href="/">
+              <Button variant="outline">Explore DRIP &amp; RHYTHM</Button>
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="amber-stage-glow film-grain flex min-h-dvh flex-col items-center justify-center px-6 py-20 text-center">
         <OrganizerWordmark organizers={fallbackEvent.organizers} />

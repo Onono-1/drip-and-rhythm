@@ -25,6 +25,7 @@ function ScannerInner() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const lastScannedRef = useRef<{ payload: string; ts: number }>({ payload: "", ts: 0 });
+  const scannerLockedRef = useRef(false);
 
   const [cameraActive, setCameraActive] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -44,6 +45,11 @@ function ScannerInner() {
   const [verification, setVerification] = useState<VerificationResult | null>(null);
   const [admittedRecord, setAdmittedRecord] = useState<CheckInRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    scannerLockedRef.current =
+      verifying || admitting || verification !== null || admittedRecord !== null;
+  }, [verifying, admitting, verification, admittedRecord]);
 
   const stopCamera = useCallback(() => {
     controlsRef.current?.stop();
@@ -116,7 +122,7 @@ function ScannerInner() {
         chosenId || undefined,
         videoRef.current,
         (result) => {
-          if (!result) return;
+          if (!result || scannerLockedRef.current) return;
           const text = result.getText();
           const now = Date.now();
           if (
@@ -125,6 +131,7 @@ function ScannerInner() {
           ) {
             return;
           }
+          scannerLockedRef.current = true;
           lastScannedRef.current = { payload: text, ts: now };
           void verifyQrCode(text);
         },

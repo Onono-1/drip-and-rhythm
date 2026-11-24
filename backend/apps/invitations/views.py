@@ -6,7 +6,7 @@ import io
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Subquery
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -27,7 +27,12 @@ from apps.communications.serializers import EmailDeliverySerializer
 from apps.communications.services import admin_resend_invitation_email
 from apps.events.serializers import PublicEventSerializer
 
-from .artwork import FORMAT_SPECS, render_promotional_artwork
+from .artwork import (
+     FORMAT_SPECS,
+    ArtworkRenderBusyError,
+    build_artwork_cache_key,
+    get_or_render_promotional_artwork,
+)
 from .crypto import hash_token
 from .models import GuestGender, Invitation, InvitationStatus
 from .serializers import (
@@ -498,7 +503,7 @@ class PublicShareImageView(APIView):
     authentication_classes = []
 
     def get(self, request, token: str):
-        enforce_rate_limit(request, scope="public_share_image", limit=90, window_seconds=60)
+        enforce_rate_limit(request, scope="public_share_image", limit=120, window_seconds=60)
         fmt = request.query_params.get("format", "story").strip().lower()
         if fmt not in FORMAT_SPECS:
             raise ApplicationError(
@@ -506,16 +511,54 @@ class PublicShareImageView(APIView):
                 message="Invalid artwork format. Choose story, square, portrait, or preview.",
             )
         raw_receipt = request.COOKIES.get(settings.CLAIM_RECEIPT_COOKIE_NAME)
+        # Always verify authorization, revocation, and sharing preferences BEFORE serving cache/ETag
         inv = _resolve_public_share_invitation(token, allow_receipt_preview_cookie=raw_receipt)
-        png_bytes = render_promotional_artwork(
+
+        expected_key = build_artwork_cache_key(
             event=inv.event,
             format_name=fmt,
             nickname=inv.nickname,
             show_nickname=inv.show_nickname_publicly,
+            invitation_id=str(inv.id),
+            sharing_version=inv.sharing_version,
         )
+        etag_value = f'"{expected_key}"'
         download = request.query_params.get("download", "").strip() in {"1", "true"}
-        resp = HttpResponse(png_bytes, content_type="image/png")
+        inm = request.META.get("HTTP_IF_NONE_MATCH", "")
+        if not download and inm and etag_value in inm:
+            not_modified = HttpResponse(status=status.HTTP_304_NOT_MODIFIED)
+            not_modified["ETag"] = etag_value
+            not_modified["Cache-Control"] = "private, no-cache, must-revalidate"
+            return not_modified
+
+        try:
+            rendered = get_or_render_promotional_artwork(
+                event=inv.event,
+                format_name=fmt,
+                nickname=inv.nickname,
+                show_nickname=inv.show_nickname_publicly,
+                invitation_id=str(inv.id),
+                sharing_version=inv.sharing_version,
+            )
+        except ArtworkRenderBusyError as exc:
+            busy_resp = JsonResponse(
+                {
+                    "error": {
+                        "code": "ARTWORK_BUSY",
+                        "message": "Artwork renderer is momentarily busy. Please retry shortly.",
+                        "details": {"retry_after": exc.retry_after_seconds},
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+            busy_resp["Retry-After"] = str(exc.retry_after_seconds)
+            busy_resp["Cache-Control"] = "no-store, max-age=0, private"
+            return busy_resp
+
+        resp = HttpResponse(rendered.png_bytes, content_type="image/png")
+        resp["ETag"] = f'"{rendered.cache_key}"'
+        resp["Content-Length"] = str(len(rendered.png_bytes))
         if download:
             resp["Content-Disposition"] = f'attachment; filename="drip-and-rhythm-{fmt}.png"'
-        resp["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+        resp["Cache-Control"] = "private, no-cache, must-revalidate"
         return resp

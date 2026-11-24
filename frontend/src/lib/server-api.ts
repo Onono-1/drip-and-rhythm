@@ -1,6 +1,8 @@
 import "server-only";
 
-import type { PublicEvent } from "@/types/api";
+import { cache } from "react";
+
+import type { PublicEvent, PublicSharePayload } from "@/types/api";
 
 const FALLBACK_PUBLIC_EVENT: PublicEvent = {
   name: "DRIP & RHYTHM",
@@ -52,18 +54,19 @@ export function getPublicSiteUrl(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
 
-export async function fetchPublicEventServer(): Promise<PublicEvent> {
+export const fetchPublicEventServer = cache(async (): Promise<PublicEvent> => {
   try {
     const res = await fetch(`${getDjangoServerBaseUrl()}/api/event/public/`, {
       cache: "no-store",
       headers: buildServerUpstreamHeaders(),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return FALLBACK_PUBLIC_EVENT;
     return (await res.json()) as PublicEvent;
   } catch {
     return FALLBACK_PUBLIC_EVENT;
   }
-}
+});
 
 export async function fetchServerJson<T>(
   apiPath: string,
@@ -77,6 +80,7 @@ export async function fetchServerJson<T>(
     const res = await fetch(`${getDjangoServerBaseUrl()}${apiPath}`, {
       cache: "no-store",
       headers: buildServerUpstreamHeaders(extra),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) {
       return { ok: false, status: res.status, data: null };
@@ -86,4 +90,12 @@ export async function fetchServerJson<T>(
   } catch {
     return { ok: false, status: 502, data: null };
   }
+}
+
+export const fetchPublicShareServer = cache(async (token: string) => {
+  return fetchServerJson<PublicSharePayload>(`/api/share/${encodeURIComponent(token)}/`);
+});
+
+export function getFallbackPublicEvent(): PublicEvent {
+  return FALLBACK_PUBLIC_EVENT;
 }

@@ -28,6 +28,7 @@ const FORWARDED_REQ_HEADERS = [
   "accept-language",
   "content-type",
   "cookie",
+  "if-none-match",
   "origin",
   "referer",
   "user-agent",
@@ -131,14 +132,22 @@ async function proxyToDjango(
       body: rawBody && rawBody.byteLength > 0 ? rawBody : undefined,
       redirect: "manual",
       cache: "no-store",
+      signal: AbortSignal.timeout(28_000),
     });
+
+    if (upstreamResp.status >= 502) {
+      console.warn(`[proxy] upstream_status=${upstreamResp.status} segment=${firstSegment} method=${method}`);
+    }
 
     const respHeaders = new Headers();
     const copyHeaderNames = [
       "content-type",
       "content-disposition",
+      "content-length",
       "cache-control",
+      "etag",
       "pragma",
+      "retry-after",
       "vary",
       "allow",
       "location",
@@ -172,7 +181,10 @@ async function proxyToDjango(
       status: upstreamResp.status,
       headers: respHeaders,
     });
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[proxy] upstream_unreachable segment=${firstSegment} method=${method} error=${err instanceof Error ? err.name : "unknown"}`,
+    );
     return NextResponse.json(
       {
         error: {
@@ -181,7 +193,13 @@ async function proxyToDjango(
           details: {},
         },
       },
-      { status: 502, headers: { "Cache-Control": "no-store, max-age=0" } },
+      {
+        status: 502,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+          "Retry-After": "3",
+        },
+      },
     );
   }
 }

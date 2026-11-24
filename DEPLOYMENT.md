@@ -8,8 +8,8 @@ DRIP & RHYTHM deploys on **100% free native Render services** (no Docker, no pai
 
 | Resource | Render Type | Plan | Monthly Cost | Key Free-Tier Limits |
 |---|---|---|---|---|
-| `drip-and-rhythm-web` | Web Service (Node `26.13.0`, Next.js) | `free` | **\$0** | 512 MB RAM; spins down after 15 min idle (~30–60s cold start); 750 free instance hours/month across free web services |
-| `drip-and-rhythm-api` | Web Service (Python `3.15.0`, Django + Gunicorn) | `free` | **\$0** | Same free web limits; protected by server-only `PROXY_SHARED_SECRET` (only `GET /api/health/` is directly reachable) |
+| `drip-and-rhythm-web` | Web Service (Node `26.13.0`, Next.js) | `free` | **\$0** | 512 MB RAM; independent `/healthz` check; spins down after 15 min idle (~30–60s cold start); 750 free instance hours/month across free web services |
+| `drip-and-rhythm-api` | Web Service (Python `3.15.0`, Django + Gunicorn `gthread` `1×4`) | `free` | **\$0** | Same free web limits; protected by server-only `PROXY_SHARED_SECRET`; bounded `/tmp/drip_artwork_cache` + single-slot artwork concurrency gate |
 | `drip-and-rhythm-db` | Managed PostgreSQL **18** | `free` | **\$0** | 256 MB RAM, 1 GB storage, private network only, **expires 30 days after creation** |
 
 **Avoiding unexpected charges**:
