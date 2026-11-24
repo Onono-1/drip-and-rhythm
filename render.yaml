@@ -1,0 +1,100 @@
+# DRIP & RHYTHM — Completely Free Native Render Blueprint ($0/month, no Docker)
+# 1 Free Next.js Web Service + 1 Free Django Web Service + 1 Free Managed PostgreSQL 18 database.
+# No paid workers, no private services, no paid cron jobs, no paid storage add-ons.
+# `sync: false` values are entered in the Render Dashboard when applying the Blueprint.
+
+envVarGroups:
+  # Shared server-only proxy credential between Next.js and Django (never exposed via NEXT_PUBLIC_*).
+  - name: drip-and-rhythm-proxy-shared
+    envVars:
+      - key: PROXY_SHARED_SECRET
+        generateValue: true
+
+databases:
+  - name: drip-and-rhythm-db
+    databaseName: drip_and_rhythm
+    user: drip_app
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "18"
+    ipAllowList: [] # Private Render network access only (external DB connections blocked)
+
+services:
+  # 1. Public Next.js App Router Web Service (Free tier; single public origin for guests & admins)
+  - type: web
+    name: drip-and-rhythm-web
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health/
+    envVars:
+      - fromGroup: drip-and-rhythm-proxy-shared
+      - key: NODE_VERSION
+        value: "26.13.0"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false # e.g. https://drip-and-rhythm-web.onrender.com (no trailing slash)
+      - key: DJANGO_INTERNAL_API_URL
+        fromService:
+          type: web
+          name: drip-and-rhythm-api
+          property: host # Public HTTPS hostname; Next.js proxy prefixes https://
+
+  # 2. Django REST Framework API Web Service (Free tier; protected by X-Drip-Proxy-Secret)
+  - type: web
+    name: drip-and-rhythm-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: python manage.py migrate --noinput && python manage.py bootstrap_production && exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /api/health/
+    envVars:
+      - fromGroup: drip-and-rhythm-proxy-shared
+      - key: PYTHON_VERSION
+        value: "3.15.0"
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_TIME_ZONE
+        value: Africa/Kampala
+      - key: DATABASE_URL
+        fromDatabase:
+          name: drip-and-rhythm-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: EMAIL_INLINE_DISPATCH
+        value: "True"
+      - key: EMAIL_DELIVERY_MODE
+        value: resend
+      - key: RESEND_FROM_EMAIL
+        value: invitations@houseofzep.site
+      - key: RESEND_FROM_NAME
+        value: DRIP & RHYTHM
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false # e.g. drip-and-rhythm-web.onrender.com
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false # e.g. https://drip-and-rhythm-web.onrender.com
+      - key: APP_BASE_URL
+        sync: false # e.g. https://drip-and-rhythm-web.onrender.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_REPLY_TO_EMAIL
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false # whsec_... from the dedicated production Resend webhook
+      - key: INITIAL_SUPERADMIN_EMAIL
+        sync: false # Temporary bootstrap only — remove after first login
+      - key: INITIAL_SUPERADMIN_PASSWORD
+        sync: false # Temporary bootstrap only — remove after first login
+      - key: INITIAL_SUPERADMIN_NAME
+        value: Super Admin

@@ -1,0 +1,27 @@
+# IMPLEMENTATION.md — Project Progress & Verification Status
+
+## 1. Completed Functionality
+- **Foundation & Native Stack**: Git repository initialized with `.gitignore`; Python `3.15.0` virtual environment (`backend/.venv`) with pinned `Django 6.1.3` stack; Node.js `26.13.0` + `npm 11.20.0` Next.js `16.4.6` App Router frontend (`frontend/package-lock.json`); self-hosted OFL fonts (`Anton`, `WindSong`, `Montserrat`, `Noto Sans`); interactive PostgreSQL `18.7` least-privilege setup script (`backend/scripts/setup_local_db.py`).
+- **Backend API & Worker (`backend/`)**:
+  - Custom `User` model (`SUPER_ADMIN`, `ADMIN`), Django session + CSRF auth, password change/forgot/reset, immediate session invalidation on deactivation, last-active-super-admin guard, PostgreSQL `RateLimitBucket`, append-only redacted `AuditLog`.
+  - Singleton `Event` configuration (`DRIP & RHYTHM`, `5 December 2026`, Muyenga Kampala, `Africa/Kampala`, `18+`, authoritative reservation contacts normalized into clickable `https://wa.me/256...` WhatsApp inquiry links).
+  - Atomic single & bulk `Invitation` generation with global and per-admin quotas, cryptographically random unique 8-digit references (`DR-XXXXXXXX`, PostgreSQL unique with collision retry; legacy 6-digit references preserved and still verifiable), non-consuming `GET` inspection, atomic claim + PostgreSQL email uniqueness + `ClaimReceipt` (configurable event-aware TTL) + `EmailDelivery` queuing, revocation, super-admin guest correction with credential rotation, and formula-sanitized CSV exports.
+  - Redesigned single-page ReportLab VIP PDF pass (`420×608`) with prominent poster, tight card hierarchy, scannable high-contrast `DRIP1:<token>` QR code, and real clickable WhatsApp PDF link annotations; 4 dedicated editorial Pillow PNG promotional compositions (`story` 1080×1920, `portrait` 1080×1350, `square` 1080×1080, `preview` 1200×630) with dynamic anonymous/personalized balance; responsive HTML/text emails with WhatsApp links; independent `process_email_jobs` worker (`SKIP LOCKED`, leases, exponential backoff); and Svix-verified Resend webhook endpoint.
+  - Separate read-only QR/manual verification (`POST /api/verify/`, `POST /api/verify/manual/` supporting camera + random/legacy manual references) and atomic single-use admission (`POST /api/check-in/`).
+- **Frontend (`frontend/`)**:
+  - Runtime `/api/[...path]` same-origin pass-through proxy preserving cookies, CSRF headers, binary streams, and raw webhook bytes.
+  - Custom `DR` monogram favicon & browser icon suite (`favicon.ico`, `favicon.svg`, `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `site.webmanifest`) wired in Next.js metadata.
+  - Cinematic multi-plane `/` homepage (`scroll-craft`), `/privacy`, mobile-first `/invite/[token]` claim flow and non-claimable states with clickable WhatsApp reservation links, `/invitation/success` celebration & enlarged artwork studio (Story default, Story/Portrait/Square selector, click-to-enlarge lightbox), and artwork-first SSR `/share/[token]` with dynamic `1200×630` Open Graph metadata.
+  - All 12 `/admin/*` pages including live dashboard stats, invitations table & bulk generator, detail/revoke/resend/guest-correction modals, `@zxing/browser` QR scanner + manual fallback, check-ins, administrators, event settings, audit logs, and profile.
+- **Production Preparation**: Native `render.yaml`, native Linux GitHub Actions CI (`.github/workflows/ci.yml`), `README.md`, `DEPLOYMENT.md`, `SECURITY.md`, and `docs/*`.
+
+## 2. Local Verification Summary (Passed on November 24, 2026)
+- **PostgreSQL 18.7 Migrations & Concurrency/Security Suite**: `5 passed` (`pytest`), covering RBAC/CSRF/deactivation/last-super-admin, quotas, random `DR-XXXXXXXX` generation + legacy `DR-000001` manual lookup compatibility, WhatsApp reservation link generation, single-use claim & duplicate-email preservation, multi-threaded concurrent claims & concurrent double-admission rejection, real `pypdfium2` + `zxing-cpp` QR decoding and clickable WhatsApp annotations from redesigned ReportLab PDFs, 4-format PNG HTTP rendering, worker dispatch, Svix webhook signature/replay/monotonicity, revocation, and credential rotation on email correction.
+- **Live Resend Delivery**: Confirmed live by the user using the verified sending domain `houseofzep.site` (confirmation email + personalized PDF admission pass received; single-use claim protection verified).
+- **Code Quality & Production Build**: `ruff check backend` (`All checks passed!`), `tsc --noEmit` (0 errors), `eslint` (0 errors, 0 warnings), `vitest run` (`2 passed`), and `npm.cmd run build` (`next build --webpack`, all 19 routes compiled cleanly).
+- **Visual & Browser Verification (`390px`, `768px`, `1440px`)**: Visually inspected redesigned PDF pass, all 4 redesigned artwork formats (personalized, anonymous, long/Unicode), DR monogram icons, and live browser views including clickable WhatsApp reservation links, artwork preview/lightbox, `/share/[token]`, and favicon delivery.
+
+## 3. Pending External / Physical Verification
+- **Live Resend Webhooks in Production**: Pending live Resend webhook registration against the production URL once deployed.
+- **Live Render Deployment**: Pending explicit deployment authorization, Render runtime version confirmation, and HTTPS custom domain configuration.
+- **Physical Device & Printed Pass Scanning**: Pending live mobile rear-camera and printed-paper QR check-in test at venue lighting levels.

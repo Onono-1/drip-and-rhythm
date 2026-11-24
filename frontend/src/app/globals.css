@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Anton";
+  src: url("/fonts/Anton-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "WindSong";
+  src: url("/fonts/WindSong-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("/fonts/Montserrat-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("/fonts/Montserrat-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("/fonts/Montserrat-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("/fonts/Montserrat-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans";
+  src: url("/fonts/NotoSans-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans";
+  src: url("/fonts/NotoSans-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-display: "Anton", "Noto Sans", sans-serif;
+  --font-script: "WindSong", cursive;
+  --font-sans: "Montserrat", "Noto Sans", system-ui, sans-serif;
+
+  --color-midnight: #190d08;
+  --color-espresso: #23110a;
+  --color-chocolate: #421509;
+  --color-burnt: #e85d19;
+  --color-sunset: #ff8c32;
+  --color-amber: #ffbe55;
+  --color-champagne: #f5ce86;
+  --color-ivory: #fff3e0;
+  --color-ivory-muted: #d8c3a8;
+  --color-crimson: #a51b12;
+  --color-status-ok: #34d399;
+  --color-status-warn: #fbbf24;
+  --color-status-err: #f87171;
+}
+
+:root {
+  color-scheme: dark;
+  background-color: #190d08;
+  color: #fff3e0;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: #190d08;
+  color: #fff3e0;
+  font-family: var(--font-sans);
+}
+
+body {
+  min-height: 100dvh;
+  background-color: #190d08;
+  color: #fff3e0;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle cinema film grain overlay */
+.film-grain {
+  background-image: radial-gradient(rgba(245, 206, 134, 0.045) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+.amber-stage-glow {
+  background:
+    radial-gradient(62% 48% at 50% 14%, rgba(232, 93, 25, 0.24) 0%, rgba(66, 21, 9, 0.14) 52%, transparent 100%),
+    linear-gradient(180deg, #190d08 0%, #23110a 52%, #190d08 100%);
+}
+
+/* Accessible keyboard focus ring */
+:focus-visible {
+  outline: 2px solid #ffbe55;
+  outline-offset: 2px;
+}
+
+/* Skip link */
+.skip-link {
+  position: fixed;
+  top: -120px;
+  left: 16px;
+  z-index: 100;
+  background: #ffbe55;
+  color: #190d08;
+  padding: 10px 16px;
+  font-weight: 700;
+  border-radius: 4px;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

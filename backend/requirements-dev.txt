@@ -1,0 +1,10 @@
+-r requirements.txt
+pytest==9.2.0
+pytest-django==4.14.0
+ruff==0.17.6
+pypdfium2==5.15.2
+zxing-cpp==3.2.0
+iniconfig==2.3.1
+packaging==26.4
+pluggy==1.7.0
+pygments==2.21.0

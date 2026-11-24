@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+backend/.venv/
+
+# Environment & secrets (retain .env.example)
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/next-env.d.ts
+frontend/AGENTS.md
+*.tsbuildinfo
+
+# Local dev runtime artifacts (dev emails, generated sample PDFs/artwork)
+backend/var/
+backend/staticfiles/
+backend/media/
+
+# Testing & linting caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+playwright/.cache/
+
+# Local installed design skills (kept locally; rules & AGENTS.md stay tracked)
+.agents/skills/
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/extensions.json
