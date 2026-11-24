@@ -30,7 +30,7 @@ DRIP & RHYTHM deploys on **100% free native Render services** (no Docker, no pai
 ### `drip-and-rhythm-web` (Next.js)
 - `NODE_VERSION=26.13.0` *(from Blueprint)*
 - `NEXT_TELEMETRY_DISABLED=1` *(from Blueprint)*
-- `DJANGO_INTERNAL_API_URL` *(auto-linked from `drip-and-rhythm-api` host)*
+- `DJANGO_INTERNAL_API_URL=https://drip-and-rhythm-api.onrender.com` *(from Blueprint)*
 - `NEXT_PUBLIC_SITE_URL` *(prompted)*: `https://drip-and-rhythm-web.onrender.com` (no trailing slash)
 
 ### `drip-and-rhythm-api` (Django)

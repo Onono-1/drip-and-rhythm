@@ -39,10 +39,7 @@ services:
       - key: NEXT_PUBLIC_SITE_URL
         sync: false # e.g. https://drip-and-rhythm-web.onrender.com (no trailing slash)
       - key: DJANGO_INTERNAL_API_URL
-        fromService:
-          type: web
-          name: drip-and-rhythm-api
-          property: host # Public HTTPS hostname; Next.js proxy prefixes https://
+        value: https://drip-and-rhythm-api.onrender.com
 
   # 2. Django REST Framework API Web Service (Free tier; protected by X-Drip-Proxy-Secret)
   - type: web
