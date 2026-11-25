@@ -28,20 +28,28 @@ from apps.communications.services import admin_resend_invitation_email
 from apps.events.serializers import PublicEventSerializer
 
 from .artwork import (
-     FORMAT_SPECS,
+    FORMAT_SPECS,
     ArtworkRenderBusyError,
     build_artwork_cache_key,
     get_or_render_promotional_artwork,
 )
 from .crypto import hash_token
-from .models import GuestGender, Invitation, InvitationStatus
+from .models import (
+    GuestGender,
+    Invitation,
+    InvitationStatus,
+    MasterInvitationLink,
+    MasterLinkStatus,
+)
 from .serializers import (
     AdminInvitationDetailSerializer,
     AdminInvitationListSerializer,
     BulkGenerateInvitationSerializer,
     ClaimInvitationSerializer,
     CorrectGuestSerializer,
+    CreateMasterLinkSerializer,
     GenerateInvitationSerializer,
+    MasterInvitationLinkSerializer,
     RevokeInvitationSerializer,
     SharingPreferenceSerializer,
     serialize_claim_receipt_payload,
@@ -50,11 +58,15 @@ from .services import (
     assert_can_manage_invitation,
     build_share_url,
     claim_invitation,
+    close_master_link,
     correct_guest_information,
+    create_master_link,
     generate_invitations,
     get_recoverable_claim_url,
     inspect_invitation_by_token,
+    pause_master_link,
     resolve_valid_claim_receipt,
+    resume_master_link,
     revoke_invitation,
     sanitize_csv_cell,
 )
@@ -69,7 +81,7 @@ def _filtered_invitations_queryset(params):
     admitted_exists = CheckIn.objects.filter(invitation=OuterRef("pk"))
 
     qs = (
-        Invitation.objects.select_related("generated_by", "revoked_by", "checkin", "checkin__verified_by")
+        Invitation.objects.select_related("generated_by", "revoked_by", "master_link", "checkin", "checkin__verified_by")
         .annotate(
             _prefetched_latest_delivery=Subquery(latest_email_subq),
             _is_admitted=Exists(admitted_exists),
@@ -118,6 +130,10 @@ def _filtered_invitations_queryset(params):
     generated_by = params.get("generated_by", "").strip()
     if generated_by:
         qs = qs.filter(generated_by_id=generated_by)
+
+    master_link_id = params.get("master_link", "").strip()
+    if master_link_id:
+        qs = qs.filter(master_link_id=master_link_id)
 
     ordering = params.get("ordering", "-generated_at").strip()
     allowed_orderings = {
@@ -211,8 +227,74 @@ class InvitationDetailView(RetrieveAPIView):
 
     def get_queryset(self):
         return Invitation.objects.select_related(
-            "generated_by", "revoked_by", "checkin", "checkin__verified_by"
-        ).all()
+            "generated_by", "revoked_by", "master_link", "checkin", "checkin__verified_by"
+        )
+
+
+class MasterLinkListCreateView(ListCreateAPIView):
+    permission_classes = [IsActiveAdmin]
+    serializer_class = MasterInvitationLinkSerializer
+
+    def get_queryset(self):
+        qs = MasterInvitationLink.objects.select_related("created_by", "closed_by").all()
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(created_by__display_name__icontains=search)
+                | Q(created_by__email__icontains=search)
+            )
+        status_param = self.request.query_params.get("status", "").strip().upper()
+        if status_param in MasterLinkStatus.values:
+            qs = qs.filter(status=status_param)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        enforce_rate_limit(
+            request,
+            scope="admin_create_master_link",
+            key=str(request.user.id),
+            limit=30,
+            window_seconds=300,
+        )
+        serializer = CreateMasterLinkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = create_master_link(
+            actor=request.user,
+            name=serializer.validated_data.get("name", ""),
+            max_tickets=serializer.validated_data["max_tickets"],
+            expires_at=serializer.validated_data.get("expires_at"),
+            request=request,
+        )
+        data = MasterInvitationLinkSerializer(result.master_link, context={"request": request}).data
+        data["claim_url"] = result.claim_url
+        data["remaining_global_quota"] = result.remaining_global_quota
+        data["remaining_admin_quota"] = result.remaining_admin_quota
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class MasterLinkPauseView(APIView):
+    permission_classes = [IsActiveAdmin]
+
+    def post(self, request, pk):
+        ml = pause_master_link(actor=request.user, master_link_id=pk, request=request)
+        return Response(MasterInvitationLinkSerializer(ml, context={"request": request}).data)
+
+
+class MasterLinkResumeView(APIView):
+    permission_classes = [IsActiveAdmin]
+
+    def post(self, request, pk):
+        ml = resume_master_link(actor=request.user, master_link_id=pk, request=request)
+        return Response(MasterInvitationLinkSerializer(ml, context={"request": request}).data)
+
+
+class MasterLinkCloseView(APIView):
+    permission_classes = [IsActiveAdmin]
+
+    def post(self, request, pk):
+        ml = close_master_link(actor=request.user, master_link_id=pk, request=request)
+        return Response(MasterInvitationLinkSerializer(ml, context={"request": request}).data).all()
 
 
 class InvitationClaimLinkView(APIView):
@@ -306,6 +388,7 @@ class InvitationExportCsvView(APIView):
                 "Admitted",
                 "Checked In At",
                 "Generated By",
+                "Source",
                 "Generated At",
                 "Claimed At",
                 "Revoked At",
@@ -323,6 +406,11 @@ class InvitationExportCsvView(APIView):
                     sanitize_csv_cell("YES" if hasattr(inv, "checkin") else "NO"),
                     sanitize_csv_cell(inv.checkin.checked_in_at.isoformat() if hasattr(inv, "checkin") else ""),
                     sanitize_csv_cell(inv.generated_by.display_name),
+                    sanitize_csv_cell(
+                        f"Master: {inv.master_link.name or 'Master Link'}"
+                        if inv.master_link_id and inv.master_link
+                        else "Direct"
+                    ),
                     sanitize_csv_cell(inv.generated_at.isoformat()),
                     sanitize_csv_cell(inv.claimed_at.isoformat() if inv.claimed_at else ""),
                     sanitize_csv_cell(inv.revoked_at.isoformat() if inv.revoked_at else ""),

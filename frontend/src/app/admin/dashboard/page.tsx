@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Layers, Plus, QrCode, RefreshCw, Ticket } from "lucide-react";
+import { Check, Copy, Layers, Link2, Plus, QrCode, RefreshCw, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -97,6 +97,12 @@ function DashboardContent() {
             <Button variant="secondary">
               <Layers className="h-4 w-4" aria-hidden="true" />
               Bulk Generate
+            </Button>
+          </Link>
+          <Link href="/admin/invitations?master=1">
+            <Button variant="secondary">
+              <Link2 className="h-4 w-4" aria-hidden="true" />
+              Master Link
             </Button>
           </Link>
           <Link href="/admin/scanner">

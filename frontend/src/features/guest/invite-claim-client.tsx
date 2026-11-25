@@ -44,6 +44,7 @@ export function InviteClaimClient({
   const [inviteState, setInviteState] = useState<GuestInviteState>(initialInspection.state);
   const [duplicateEmailNotice, setDuplicateEmailNotice] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isClaiming, setIsClaiming] = useState(false);
   const { event } = initialInspection;
 
   useEffect(() => {
@@ -61,6 +62,8 @@ export function InviteClaimClient({
   });
 
   const onSubmit = async (values: ClaimFormValues) => {
+    if (isClaiming) return;
+    setIsClaiming(true);
     setFormError(null);
     setDuplicateEmailNotice(false);
 
@@ -81,7 +84,10 @@ export function InviteClaimClient({
           err.code === "INVITATION_EXPIRED" ||
           err.code === "INVITATION_REVOKED" ||
           err.code === "INVALID_INVITATION" ||
-          err.code === "CLAIMING_DISABLED"
+          err.code === "CLAIMING_DISABLED" ||
+          err.code === "MASTER_LINK_EXHAUSTED" ||
+          err.code === "MASTER_LINK_PAUSED" ||
+          err.code === "MASTER_LINK_CLOSED"
         ) {
           setInviteState(err.code);
           return;
@@ -104,6 +110,8 @@ export function InviteClaimClient({
       } else {
         setFormError("Unable to complete your claim right now. Check your connection and try again.");
       }
+    } finally {
+      setIsClaiming(false);
     }
   };
 
@@ -254,7 +262,13 @@ export function InviteClaimClient({
                 )}
               </fieldset>
 
-              <Button type="submit" size="lg" loading={isSubmitting} className="w-full">
+              <Button
+                type="submit"
+                size="lg"
+                loading={isSubmitting || isClaiming}
+                disabled={isSubmitting || isClaiming}
+                className="w-full"
+              >
                 SECURE MY INVITATION
               </Button>
             </form>
@@ -325,6 +339,18 @@ function NonClaimableStateCard({
     INVALID_INVITATION: {
       title: "UNRECOGNIZED INVITATION LINK",
       body: "We could not match this URL to a valid DRIP & RHYTHM invitation. Verify that the full link shared with you was copied without missing characters.",
+    },
+    MASTER_LINK_EXHAUSTED: {
+      title: "ALLOCATION FULLY CLAIMED",
+      body: "All invitations allocated to this link have been claimed. If you already secured your spot, check your email inbox or spam folder for your PDF admission pass.",
+    },
+    MASTER_LINK_PAUSED: {
+      title: "INVITATION LINK PAUSED",
+      body: "Claims through this invitation link are temporarily paused by the organizers. Please check back later or contact the host desk for assistance.",
+    },
+    MASTER_LINK_CLOSED: {
+      title: "INVITATION LINK CLOSED",
+      body: "This invitation link has been closed by the event organizers and is no longer accepting new claims. Already issued passes remain valid.",
     },
   };
 

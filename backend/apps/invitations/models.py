@@ -21,6 +21,13 @@ class GuestGender(models.TextChoices):
     FEMALE = "FEMALE", "Female"
 
 
+class MasterLinkStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    PAUSED = "PAUSED", "Paused"
+    EXHAUSTED = "EXHAUSTED", "Exhausted"
+    CLOSED = "CLOSED", "Closed"
+
+
 def compute_claim_receipt_expiry(event, claimed_at: datetime.datetime | None = None) -> datetime.datetime:
     base_time = claimed_at or timezone.now()
     configured_days = getattr(settings, "CLAIM_RECEIPT_TTL_DAYS", None)
@@ -43,12 +50,106 @@ def compute_claim_receipt_expiry(event, claimed_at: datetime.datetime | None = N
     return max(event_window_end, minimum_window)
 
 
+class MasterInvitationLink(models.Model):
+    """
+    Lightweight reusable invitation link with a fixed ticket allocation.
+    Reserves max_tickets against global & creator quotas on creation without
+    pre-creating unused Invitation rows, PDFs, QR tokens, or artwork.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(
+        "events.Event",
+        on_delete=models.CASCADE,
+        related_name="master_links",
+    )
+    name = models.CharField(max_length=120, blank=True, default="")
+    token_digest = models.CharField(max_length=64, unique=True, db_index=True)
+    token_encrypted = models.TextField(blank=True, default="")
+
+    max_tickets = models.PositiveIntegerField()
+    claimed_count = models.PositiveIntegerField(default=0)
+    released_tickets = models.PositiveIntegerField(default=0)
+
+    status = models.CharField(
+        max_length=16,
+        choices=MasterLinkStatus.choices,
+        default=MasterLinkStatus.ACTIVE,
+        db_index=True,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_master_links",
+    )
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="closed_master_links",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(max_tickets__gte=1),
+                name="chk_master_link_max_tickets_gte_1",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(claimed_count__lte=models.F("max_tickets")),
+                name="chk_master_link_claimed_lte_max",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["event", "status"]),
+            models.Index(fields=["created_by", "status"]),
+        ]
+
+    @property
+    def remaining_tickets(self) -> int:
+        if self.status == MasterLinkStatus.CLOSED:
+            return 0
+        return max(0, self.max_tickets - self.claimed_count)
+
+    @property
+    def effective_status(self) -> str:
+        if self.status == MasterLinkStatus.CLOSED:
+            return MasterLinkStatus.CLOSED
+        if self.claimed_count >= self.max_tickets or self.status == MasterLinkStatus.EXHAUSTED:
+            return MasterLinkStatus.EXHAUSTED
+        if self.status == MasterLinkStatus.PAUSED:
+            return MasterLinkStatus.PAUSED
+        if self.expires_at and self.expires_at <= timezone.now():
+            return "EXPIRED"
+        return MasterLinkStatus.ACTIVE
+
+    def __str__(self) -> str:
+        label = self.name or str(self.id)[:8]
+        return f"MasterLink({label}: {self.claimed_count}/{self.max_tickets}, {self.status})"
+
+
 class Invitation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event = models.ForeignKey(
         "events.Event",
         on_delete=models.CASCADE,
         related_name="invitations",
+    )
+    master_link = models.ForeignKey(
+        MasterInvitationLink,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="claimed_invitations",
     )
     reference_number = models.PositiveIntegerField(unique=True, null=True, blank=True)
     reference = models.CharField(max_length=24, unique=True, db_index=True)

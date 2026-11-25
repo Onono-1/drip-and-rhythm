@@ -46,7 +46,10 @@ def _invalidate_user_sessions(user_id: str) -> None:
 
 
 def _with_generated_count(user: User) -> User:
-    user.invitations_generated_count = user.generated_invitations.count()
+    from apps.events.models import Event
+    from apps.invitations.services import get_quota_usage
+
+    user.invitations_generated_count = get_quota_usage(event=Event.get_current(), actor=user)
     return user
 
 
@@ -299,13 +302,33 @@ class ResetPasswordView(APIView):
         return Response({"status": "password_reset"})
 
 
+def _annotate_quota_usage(qs):
+    from django.db.models import F, IntegerField, OuterRef, Subquery, Sum
+    from django.db.models.functions import Coalesce
+
+    from apps.invitations.models import MasterInvitationLink, MasterLinkStatus
+
+    master_reserved_subq = (
+        MasterInvitationLink.objects.filter(
+            created_by=OuterRef("pk"),
+            status__in=[MasterLinkStatus.ACTIVE, MasterLinkStatus.PAUSED],
+        )
+        .values("created_by")
+        .annotate(total=Sum(F("max_tickets") - F("claimed_count")))
+        .values("total")[:1]
+    )
+    return qs.annotate(
+        _direct_count=Count("generated_invitations", distinct=True),
+        _master_reserved=Coalesce(Subquery(master_reserved_subq, output_field=IntegerField()), 0),
+        invitations_generated_count=F("_direct_count") + F("_master_reserved"),
+    )
+
+
 class AdminUserListCreateView(ListCreateAPIView):
     permission_classes = [IsSuperAdmin]
 
     def get_queryset(self):
-        qs = User.objects.annotate(invitations_generated_count=Count("generated_invitations")).order_by(
-            "display_name", "email"
-        )
+        qs = _annotate_quota_usage(User.objects.all()).order_by("display_name", "email")
         search = self.request.query_params.get("search", "").strip()
         is_active = self.request.query_params.get("is_active", "").strip().lower()
         if search:
@@ -344,7 +367,7 @@ class AdminUserDetailView(RetrieveUpdateAPIView):
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
-        return User.objects.annotate(invitations_generated_count=Count("generated_invitations"))
+        return _annotate_quota_usage(User.objects.all())
 
     def get_serializer_class(self):
         if self.request.method == "PATCH":

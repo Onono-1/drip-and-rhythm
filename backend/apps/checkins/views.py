@@ -19,7 +19,11 @@ from apps.audit.services import log_audit_event
 from apps.communications.models import EmailDelivery, EmailStatus
 from apps.events.models import Event
 from apps.invitations.models import GuestGender, Invitation, InvitationStatus
-from apps.invitations.services import sanitize_csv_cell
+from apps.invitations.services import (
+    get_master_reserved_unused_count,
+    get_quota_usage,
+    sanitize_csv_cell,
+)
 
 from .models import CheckIn
 from .serializers import (
@@ -161,10 +165,14 @@ class DashboardStatsView(APIView):
         now = timezone.now()
         inv_qs = Invitation.objects.filter(event=event)
 
-        total_generated = inv_qs.count()
-        available_unused = inv_qs.filter(status=InvitationStatus.UNUSED).filter(
-            Q(expires_at__isnull=True) | Q(expires_at__gt=now)
-        ).count()
+        master_reserved_unused = get_master_reserved_unused_count(event=event)
+        total_generated = inv_qs.count() + master_reserved_unused
+        available_unused = (
+            inv_qs.filter(status=InvitationStatus.UNUSED)
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .count()
+            + master_reserved_unused
+        )
         claimed_count = inv_qs.filter(status=InvitationStatus.CLAIMED).count()
         expired_count = inv_qs.filter(
             Q(status=InvitationStatus.EXPIRED) | Q(status=InvitationStatus.UNUSED, expires_at__lte=now)
@@ -206,7 +214,7 @@ class DashboardStatsView(APIView):
         claim_rate = _pct(claimed_count, total_generated)
         attendance_rate = _pct(admitted_count, claimed_count)
 
-        admin_generated = inv_qs.filter(generated_by=request.user).count()
+        admin_generated = get_quota_usage(event=event, actor=request.user)
 
         return Response(
             {

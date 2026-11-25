@@ -2,6 +2,8 @@ export type AdminRole = "SUPER_ADMIN" | "ADMIN";
 
 export type InvitationStatus = "UNUSED" | "CLAIMED" | "EXPIRED" | "REVOKED";
 
+export type MasterLinkStatus = "ACTIVE" | "PAUSED" | "EXHAUSTED" | "CLOSED" | "EXPIRED";
+
 export type GuestGender = "MALE" | "FEMALE";
 
 export type EmailDeliveryStatus =
@@ -92,6 +94,8 @@ export interface InvitationSummary {
   generated_by: string;
   generated_by_name: string;
   generated_by_email: string;
+  master_link_id: string | null;
+  master_link_name: string | null;
   generated_at: string;
   expires_at: string | null;
   claimed_at: string | null;
@@ -128,6 +132,31 @@ export interface BulkGenerateResponse {
   remaining_admin_quota: number | null;
 }
 
+export interface MasterLinkSummary {
+  id: string;
+  name: string;
+  max_tickets: number;
+  claimed_count: number;
+  remaining_tickets: number;
+  released_tickets: number;
+  status: MasterLinkStatus;
+  created_by: string;
+  created_by_name: string;
+  created_by_email: string;
+  created_at: string;
+  expires_at: string | null;
+  paused_at: string | null;
+  closed_at: string | null;
+  closed_by_name: string | null;
+  claim_url: string | null;
+  can_manage: boolean;
+}
+
+export interface MasterLinkCreateResponse extends MasterLinkSummary {
+  remaining_global_quota: number | null;
+  remaining_admin_quota: number | null;
+}
+
 export interface EmailDeliveryRecord {
   id: string;
   email_type: string;
@@ -152,7 +181,10 @@ export type GuestInviteState =
   | "INVITATION_EXPIRED"
   | "INVITATION_REVOKED"
   | "INVALID_INVITATION"
-  | "CLAIMING_DISABLED";
+  | "CLAIMING_DISABLED"
+  | "MASTER_LINK_EXHAUSTED"
+  | "MASTER_LINK_PAUSED"
+  | "MASTER_LINK_CLOSED";
 
 export interface GuestInviteInspection {
   state: GuestInviteState;

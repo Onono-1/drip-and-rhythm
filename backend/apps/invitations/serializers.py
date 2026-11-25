@@ -4,8 +4,13 @@ from rest_framework import serializers
 
 from apps.events.serializers import PublicEventSerializer
 
-from .models import GuestGender, Invitation
-from .services import build_share_url, get_recoverable_claim_url, get_recoverable_share_token
+from .models import GuestGender, Invitation, MasterInvitationLink
+from .services import (
+    build_share_url,
+    get_recoverable_claim_url,
+    get_recoverable_master_claim_url,
+    get_recoverable_share_token,
+)
 
 
 class GenerateInvitationSerializer(serializers.Serializer):
@@ -15,6 +20,59 @@ class GenerateInvitationSerializer(serializers.Serializer):
 class BulkGenerateInvitationSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1, max_value=500)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class CreateMasterLinkSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="", trim_whitespace=True)
+    max_tickets = serializers.IntegerField(min_value=1, max_value=5000)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class MasterInvitationLinkSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="effective_status", read_only=True)
+    remaining_tickets = serializers.IntegerField(read_only=True)
+    created_by_name = serializers.CharField(source="created_by.display_name", read_only=True)
+    created_by_email = serializers.CharField(source="created_by.email", read_only=True)
+    closed_by_name = serializers.SerializerMethodField()
+    claim_url = serializers.SerializerMethodField()
+    can_manage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MasterInvitationLink
+        fields = [
+            "id",
+            "name",
+            "max_tickets",
+            "claimed_count",
+            "remaining_tickets",
+            "released_tickets",
+            "status",
+            "created_by",
+            "created_by_name",
+            "created_by_email",
+            "created_at",
+            "expires_at",
+            "paused_at",
+            "closed_at",
+            "closed_by_name",
+            "claim_url",
+            "can_manage",
+        ]
+
+    def get_closed_by_name(self, obj: MasterInvitationLink) -> str | None:
+        if obj.closed_by_id and obj.closed_by:
+            return obj.closed_by.display_name
+        return None
+
+    def get_claim_url(self, obj: MasterInvitationLink) -> str | None:
+        return get_recoverable_master_claim_url(obj)
+
+    def get_can_manage(self, obj: MasterInvitationLink) -> bool:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        return bool(user.is_super_admin or obj.created_by_id == user.id)
 
 
 class ClaimInvitationSerializer(serializers.Serializer):
@@ -58,6 +116,8 @@ class AdminInvitationListSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="effective_status", read_only=True)
     generated_by_name = serializers.CharField(source="generated_by.display_name", read_only=True)
     generated_by_email = serializers.CharField(source="generated_by.email", read_only=True)
+    master_link_id = serializers.UUIDField(read_only=True)
+    master_link_name = serializers.SerializerMethodField()
     latest_email_status = serializers.SerializerMethodField()
     is_admitted = serializers.SerializerMethodField()
     checked_in_at = serializers.SerializerMethodField()
@@ -78,6 +138,8 @@ class AdminInvitationListSerializer(serializers.ModelSerializer):
             "generated_by",
             "generated_by_name",
             "generated_by_email",
+            "master_link_id",
+            "master_link_name",
             "generated_at",
             "expires_at",
             "claimed_at",
@@ -87,6 +149,11 @@ class AdminInvitationListSerializer(serializers.ModelSerializer):
             "public_sharing_enabled",
             "can_manage",
         ]
+
+    def get_master_link_name(self, obj: Invitation) -> str | None:
+        if obj.master_link_id and obj.master_link:
+            return obj.master_link.name or "Master Link"
+        return None
 
     def get_latest_email_status(self, obj: Invitation) -> str:
         latest = getattr(obj, "_prefetched_latest_delivery", None)
