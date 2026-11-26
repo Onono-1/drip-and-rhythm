@@ -29,4 +29,6 @@ users_urlpatterns = [
     path("<uuid:pk>/", AdminUserDetailView.as_view(), name="users-detail"),
     path("<uuid:pk>/activate/", AdminUserActivateView.as_view(), name="users-activate"),
     path("<uuid:pk>/deactivate/", AdminUserDeactivateView.as_view(), name="users-deactivate"),
+    path("<uuid:pk>/resume/", AdminUserActivateView.as_view(), name="users-resume"),
+    path("<uuid:pk>/pause/", AdminUserDeactivateView.as_view(), name="users-pause"),
 ]

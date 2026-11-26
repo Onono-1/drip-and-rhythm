@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, UserCheck, UserX } from "lucide-react";
+import { Pause, Play, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { Button, Input, ModalDialog, StatusBadge } from "@/components/ui/primitives";
@@ -13,6 +13,7 @@ function UsersInner() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  const [statusTarget, setStatusTarget] = useState<AdminUser | null>(null);
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -84,14 +85,19 @@ function UsersInner() {
     }
   };
 
-  const toggleActive = async (target: AdminUser) => {
+  const confirmToggleStatus = async () => {
+    if (!statusTarget) return;
+    setBusy(true);
     setErrorMsg(null);
     try {
-      const action = target.is_active ? "deactivate" : "activate";
-      await apiFetch(`/api/users/${target.id}/${action}/`, { method: "POST", json: {} });
+      const action = statusTarget.is_active ? "pause" : "resume";
+      await apiFetch(`/api/users/${statusTarget.id}/${action}/`, { method: "POST", json: {} });
+      setStatusTarget(null);
       await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     } catch (err) {
       setErrorMsg(err instanceof ApiClientError ? err.message : "Action failed.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -161,11 +167,11 @@ function UsersInner() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3.5">
-                    <StatusBadge tone={adm.is_active ? "success" : "danger"}>
-                      {adm.is_active ? "Active" : "Deactivated"}
+                    <StatusBadge tone={adm.is_active ? "success" : "warning"}>
+                      {adm.is_active ? "Active" : "Paused"}
                     </StatusBadge>
                   </td>
-                  <td className="px-4 py-3.5 text-xs text-ivory">
+                  <td className="px-4 py-3.5 text-xs text-ivory tabular-nums">
                     {adm.invitations_generated_count} / {adm.invitation_limit ?? "Unlimited"}
                   </td>
                   <td className="px-4 py-3.5 text-xs text-ivory-muted">
@@ -187,23 +193,28 @@ function UsersInner() {
                       >
                         Edit
                       </Button>
-                      <Button
-                        variant={adm.is_active ? "danger" : "secondary"}
-                        size="sm"
-                        onClick={() => void toggleActive(adm)}
-                      >
-                        {adm.is_active ? (
-                          <>
-                            <UserX className="h-3.5 w-3.5" />
-                            Deactivate
-                          </>
-                        ) : (
-                          <>
-                            <UserCheck className="h-3.5 w-3.5" />
-                            Activate
-                          </>
-                        )}
-                      </Button>
+                      {adm.role !== "SUPER_ADMIN" && (
+                        <Button
+                          variant={adm.is_active ? "danger" : "secondary"}
+                          size="sm"
+                          onClick={() => {
+                            setErrorMsg(null);
+                            setStatusTarget(adm);
+                          }}
+                        >
+                          {adm.is_active ? (
+                            <>
+                              <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                              Resume
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -298,6 +309,43 @@ function UsersInner() {
             </Button>
           </div>
         </form>
+      </ModalDialog>
+
+      {/* Pause / Resume Confirmation Dialog */}
+      <ModalDialog
+        open={Boolean(statusTarget)}
+        onOpenChange={(open) => !open && setStatusTarget(null)}
+        title={statusTarget?.is_active ? "PAUSE ADMINISTRATOR ACCOUNT" : "RESUME ADMINISTRATOR ACCOUNT"}
+        description={statusTarget?.email}
+      >
+        {statusTarget && (
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-ivory-muted">
+              {statusTarget.is_active ? (
+                <>
+                  Pausing <strong className="text-ivory">{statusTarget.display_name}</strong> immediately ends their active sessions and blocks sign-in until a Super Admin restores access. All previously generated single, bulk, and master invitation links will continue working normally.
+                </>
+              ) : (
+                <>
+                  Resuming <strong className="text-ivory">{statusTarget.display_name}</strong> restores their administrator sign-in and host operations access.
+                </>
+              )}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setStatusTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant={statusTarget.is_active ? "danger" : "primary"}
+                loading={busy}
+                onClick={() => void confirmToggleStatus()}
+              >
+                {statusTarget.is_active ? "Confirm Pause" : "Confirm Resume"}
+              </Button>
+            </div>
+          </div>
+        )}
       </ModalDialog>
 
       {/* Edit Admin Dialog */}

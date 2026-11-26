@@ -98,15 +98,15 @@ class LoginView(APIView):
         if candidate is not None and not candidate.is_active and candidate.check_password(password):
             log_audit_event(
                 actor=None,
-                action_type="ADMIN_LOGIN_BLOCKED_INACTIVE",
+                action_type="ADMIN_LOGIN_BLOCKED_PAUSED",
                 target_type="User",
                 target_id=str(candidate.id),
                 metadata={"email": email},
                 request=request,
             )
             raise ApplicationError(
-                code="ACCOUNT_DEACTIVATED",
-                message="Your administrator account is currently deactivated.",
+                code="ACCOUNT_PAUSED",
+                message="Your administrator account has been temporarily paused. Please contact the Super Admin to restore your access.",
                 status_code=status.HTTP_403_FORBIDDEN,
             )
 
@@ -415,15 +415,17 @@ class AdminUserActivateView(APIView):
     def post(self, request, pk):
         with transaction.atomic():
             target = get_object_or_404(User.objects.select_for_update(), pk=pk)
-            target.is_active = True
-            target.save(update_fields=["is_active", "updated_at"])
-            log_audit_event(
-                actor=request.user,
-                action_type="ADMIN_USER_ACTIVATED",
-                target_type="User",
-                target_id=str(target.id),
-                request=request,
-            )
+            if not target.is_active:
+                target.is_active = True
+                target.save(update_fields=["is_active", "updated_at"])
+                log_audit_event(
+                    actor=request.user,
+                    action_type="ADMIN_USER_RESUMED",
+                    target_type="User",
+                    target_id=str(target.id),
+                    metadata={"email": target.email, "role": target.role},
+                    request=request,
+                )
         return Response(AdminMeSerializer(_with_generated_count(target)).data)
 
 
@@ -433,15 +435,22 @@ class AdminUserDeactivateView(APIView):
     def post(self, request, pk):
         with transaction.atomic():
             target = get_object_or_404(User.objects.select_for_update(), pk=pk)
-            _assert_not_last_super_admin(target, deactivating=True)
-            target.is_active = False
-            target.save(update_fields=["is_active", "updated_at"])
-            _invalidate_user_sessions(str(target.id))
-            log_audit_event(
-                actor=request.user,
-                action_type="ADMIN_USER_DEACTIVATED",
-                target_type="User",
-                target_id=str(target.id),
-                request=request,
-            )
+            if target.role == AdminRole.SUPER_ADMIN:
+                raise ApplicationError(
+                    code="SUPER_ADMIN_NOT_PAUSABLE",
+                    message="Super Admin accounts cannot be paused.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            if target.is_active:
+                target.is_active = False
+                target.save(update_fields=["is_active", "updated_at"])
+                _invalidate_user_sessions(str(target.id))
+                log_audit_event(
+                    actor=request.user,
+                    action_type="ADMIN_USER_PAUSED",
+                    target_type="User",
+                    target_id=str(target.id),
+                    metadata={"email": target.email, "role": target.role},
+                    request=request,
+                )
         return Response(AdminMeSerializer(_with_generated_count(target)).data)

@@ -62,8 +62,8 @@ class ActiveAdminAndCacheControlMiddleware:
                 resp = JsonResponse(
                     {
                         "error": {
-                            "code": "ACCOUNT_DEACTIVATED",
-                            "message": "Your administrator account has been deactivated.",
+                            "code": "ACCOUNT_PAUSED",
+                            "message": "Your administrator account has been temporarily paused. Please contact the Super Admin to restore your access.",
                             "details": {},
                         }
                     },

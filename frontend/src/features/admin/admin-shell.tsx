@@ -119,8 +119,8 @@ export function AdminGuardShell({
   return (
     <AdminUserContext.Provider value={user}>
       <div className="flex min-h-dvh bg-midnight text-ivory">
-        {/* Desktop Sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col justify-between border-r border-champagne/15 bg-espresso p-5 lg:flex">
+        {/* Sticky Desktop Sidebar (independent scroll when taller than viewport) */}
+        <aside className="hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-champagne/15 bg-espresso p-5 lg:sticky lg:top-0 lg:flex lg:h-dvh">
           <div>
             <Link href="/" className="block">
               <p className="font-display text-2xl tracking-wide text-ivory uppercase">
