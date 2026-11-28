@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+import time
+
 from django.db import transaction
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -11,14 +14,39 @@ from apps.audit.services import log_audit_event
 from .models import Event
 from .serializers import AdminEventSettingsSerializer, PublicEventSerializer
 
+# Short in-process cache for non-sensitive public event metadata (single gthread worker).
+# Immediately invalidated whenever EventSettingsView.patch commits an update.
+_PUBLIC_EVENT_CACHE_LOCK = threading.Lock()
+_PUBLIC_EVENT_CACHE_TTL_SECONDS = 30.0
+_public_event_cache: tuple[float, dict] | None = None
+
+
+def invalidate_public_event_cache() -> None:
+    global _public_event_cache
+    with _PUBLIC_EVENT_CACHE_LOCK:
+        _public_event_cache = None
+
 
 class PublicEventView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        event = Event.get_current()
-        resp = Response(PublicEventSerializer(event).data)
+        global _public_event_cache
+        now = time.monotonic()
+        with _PUBLIC_EVENT_CACHE_LOCK:
+            if _public_event_cache is not None and (now - _public_event_cache[0]) < _PUBLIC_EVENT_CACHE_TTL_SECONDS:
+                data = _public_event_cache[1]
+            else:
+                data = None
+
+        if data is None:
+            event = Event.get_current()
+            data = PublicEventSerializer(event).data
+            with _PUBLIC_EVENT_CACHE_LOCK:
+                _public_event_cache = (time.monotonic(), data)
+
+        resp = Response(data)
         resp["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
         return resp
 
@@ -48,4 +76,5 @@ class EventSettingsView(APIView):
                 metadata={"updated_fields": updated_fields},
                 request=request,
             )
+            transaction.on_commit(invalidate_public_event_cache)
         return Response(serializer.data)

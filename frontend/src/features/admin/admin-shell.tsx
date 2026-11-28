@@ -67,6 +67,7 @@ export function AdminGuardShell({
   const { data: user, isLoading, isError } = useQuery({
     queryKey: ["admin-me"],
     queryFn: () => apiFetch<AdminUser>("/api/auth/me/"),
+    staleTime: 60_000,
     retry: false,
   });
 

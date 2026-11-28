@@ -1,8 +1,7 @@
 "use client";
 
-import confetti from "canvas-confetti";
 import { Check, Copy, Download, Mail, Share2, Sparkles } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -70,16 +69,23 @@ export function InvitationSuccessClient({
 
   useEffect(() => {
     if (!receipt || prefersReducedMotion) return;
-    try {
-      void confetti({
-        particleCount: 55,
-        spread: 68,
-        origin: { y: 0.62 },
-        colors: ["#E85D19", "#FFBE55", "#F5CE86", "#FFF3E0"],
+    let cancelled = false;
+    void import("canvas-confetti")
+      .then(({ default: confetti }) => {
+        if (cancelled) return;
+        void confetti({
+          particleCount: 55,
+          spread: 68,
+          origin: { y: 0.62 },
+          colors: ["#E85D19", "#FFBE55", "#F5CE86", "#FFF3E0"],
+        });
+      })
+      .catch(() => {
+        // Ignore canvas unavailability in headless test environments
       });
-    } catch {
-      // Ignore canvas unavailability in headless test environments
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [prefersReducedMotion, receipt]);
 
   useEffect(() => {
@@ -185,6 +191,7 @@ export function InvitationSuccessClient({
   const emailInfo = describeEmailStatus(receipt.email_delivery_status, receipt.guest_email);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="amber-stage-glow film-grain min-h-dvh">
       <header className="border-b border-champagne/15 bg-midnight/90">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
@@ -381,5 +388,6 @@ export function InvitationSuccessClient({
         </section>
       </main>
     </div>
+    </MotionConfig>
   );
 }

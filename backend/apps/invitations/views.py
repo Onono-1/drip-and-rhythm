@@ -5,7 +5,7 @@ import io
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -21,7 +21,6 @@ from apps.accounts.permissions import IsActiveAdmin, IsSuperAdmin
 from apps.accounts.rate_limit import enforce_rate_limit
 from apps.audit.exceptions import ApplicationError
 from apps.audit.services import log_audit_event
-from apps.checkins.models import CheckIn
 from apps.communications.models import EmailDelivery
 from apps.communications.serializers import EmailDeliverySerializer
 from apps.communications.services import admin_resend_invitation_email
@@ -78,14 +77,10 @@ def _filtered_invitations_queryset(params):
         .order_by("-created_at")
         .values("status")[:1]
     )
-    admitted_exists = CheckIn.objects.filter(invitation=OuterRef("pk"))
 
     qs = (
         Invitation.objects.select_related("generated_by", "revoked_by", "master_link", "checkin", "checkin__verified_by")
-        .annotate(
-            _prefetched_latest_delivery=Subquery(latest_email_subq),
-            _is_admitted=Exists(admitted_exists),
-        )
+        .annotate(_prefetched_latest_delivery=Subquery(latest_email_subq))
         .all()
     )
 
@@ -117,9 +112,9 @@ def _filtered_invitations_queryset(params):
 
     admission = params.get("admission_status", "").strip().upper()
     if admission == "ADMITTED":
-        qs = qs.filter(_is_admitted=True)
+        qs = qs.filter(checkin__isnull=False)
     elif admission == "NOT_ADMITTED":
-        qs = qs.filter(_is_admitted=False)
+        qs = qs.filter(checkin__isnull=True)
 
     gender = params.get("gender", "").strip().upper()
     if gender in GuestGender.values:
@@ -394,7 +389,7 @@ class InvitationExportCsvView(APIView):
                 "Revoked At",
             ]
         )
-        for inv in qs.iterator():
+        for inv in qs.iterator(chunk_size=200):
             writer.writerow(
                 [
                     sanitize_csv_cell(inv.reference),

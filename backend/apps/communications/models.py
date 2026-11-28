@@ -66,6 +66,7 @@ class EmailDelivery(models.Model):
         indexes = [
             models.Index(fields=["status", "next_retry_at"]),
             models.Index(fields=["status", "lease_expires_at"]),
+            models.Index(fields=["invitation", "-created_at"], name="comm_email_inv_created_idx"),
         ]
 
     def __str__(self) -> str:

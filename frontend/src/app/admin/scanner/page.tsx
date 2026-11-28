@@ -1,6 +1,6 @@
 "use client";
 
-import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
+import type { IScannerControls } from "@zxing/browser";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -105,6 +105,7 @@ function ScannerInner() {
     }
 
     try {
+      const { BrowserQRCodeReader } = await import("@zxing/browser");
       const videoInputs = await BrowserQRCodeReader.listVideoInputDevices();
       setDevices(videoInputs);
 

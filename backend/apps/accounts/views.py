@@ -39,10 +39,14 @@ from .serializers import (
 
 def _invalidate_user_sessions(user_id: str) -> None:
     now = timezone.now()
-    for session in Session.objects.filter(expire_date__gt=now):
+    target_id = str(user_id)
+    matching_keys: list[str] = []
+    for session in Session.objects.filter(expire_date__gt=now).only("session_key", "session_data").iterator(chunk_size=100):
         data = session.get_decoded()
-        if str(data.get("_auth_user_id")) == str(user_id):
-            session.delete()
+        if str(data.get("_auth_user_id")) == target_id:
+            matching_keys.append(session.session_key)
+    if matching_keys:
+        Session.objects.filter(session_key__in=matching_keys).delete()
 
 
 def _with_generated_count(user: User) -> User:

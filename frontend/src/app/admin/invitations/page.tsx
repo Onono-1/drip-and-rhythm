@@ -141,6 +141,7 @@ function InvitationsInner() {
   const { data: dashStats } = useQuery({
     queryKey: ["admin-dashboard"],
     queryFn: () => apiFetch<DashboardStats>("/api/dashboard/"),
+    enabled: bulkOpen || masterOpen,
   });
 
   const invalidateAll = async () => {

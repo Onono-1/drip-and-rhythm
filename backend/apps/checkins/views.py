@@ -4,7 +4,8 @@ import csv
 import io
 
 from django.db import connection
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -18,12 +19,14 @@ from apps.accounts.rate_limit import enforce_rate_limit
 from apps.audit.services import log_audit_event
 from apps.communications.models import EmailDelivery, EmailStatus
 from apps.events.models import Event
-from apps.invitations.models import GuestGender, Invitation, InvitationStatus
-from apps.invitations.services import (
-    get_master_reserved_unused_count,
-    get_quota_usage,
-    sanitize_csv_cell,
+from apps.invitations.models import (
+    GuestGender,
+    Invitation,
+    InvitationStatus,
+    MasterInvitationLink,
+    MasterLinkStatus,
 )
+from apps.invitations.services import sanitize_csv_cell
 
 from .models import CheckIn
 from .serializers import (
@@ -130,7 +133,7 @@ class CheckInExportCsvView(APIView):
                 "Notes",
             ]
         )
-        for ci in qs.iterator():
+        for ci in qs.iterator(chunk_size=200):
             writer.writerow(
                 [
                     sanitize_csv_cell(ci.invitation.reference),
@@ -165,46 +168,93 @@ class DashboardStatsView(APIView):
         now = timezone.now()
         inv_qs = Invitation.objects.filter(event=event)
 
-        master_reserved_unused = get_master_reserved_unused_count(event=event)
-        total_generated = inv_qs.count() + master_reserved_unused
-        available_unused = (
-            inv_qs.filter(status=InvitationStatus.UNUSED)
-            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
-            .count()
-            + master_reserved_unused
+        # 1. Single-pass PostgreSQL conditional aggregation across Invitation
+        inv_agg = inv_qs.aggregate(
+            inv_total=Count("id"),
+            unused_direct=Count(
+                "id",
+                filter=Q(status=InvitationStatus.UNUSED)
+                & (Q(expires_at__isnull=True) | Q(expires_at__gt=now)),
+            ),
+            claimed=Count("id", filter=Q(status=InvitationStatus.CLAIMED)),
+            expired=Count(
+                "id",
+                filter=Q(status=InvitationStatus.EXPIRED)
+                | Q(status=InvitationStatus.UNUSED, expires_at__lte=now),
+            ),
+            revoked=Count("id", filter=Q(status=InvitationStatus.REVOKED)),
+            claimed_male=Count(
+                "id",
+                filter=Q(status=InvitationStatus.CLAIMED, gender=GuestGender.MALE),
+            ),
+            claimed_female=Count(
+                "id",
+                filter=Q(status=InvitationStatus.CLAIMED, gender=GuestGender.FEMALE),
+            ),
+            admin_inv_total=Count("id", filter=Q(generated_by=request.user)),
         )
-        claimed_count = inv_qs.filter(status=InvitationStatus.CLAIMED).count()
-        expired_count = inv_qs.filter(
-            Q(status=InvitationStatus.EXPIRED) | Q(status=InvitationStatus.UNUSED, expires_at__lte=now)
-        ).count()
-        revoked_count = inv_qs.filter(status=InvitationStatus.REVOKED).count()
 
+        # 2. Single-pass aggregation for global & per-admin reserved Master Link slots
+        active_master_qs = MasterInvitationLink.objects.filter(
+            event=event,
+            status__in=[MasterLinkStatus.ACTIVE, MasterLinkStatus.PAUSED],
+        )
+        master_agg = active_master_qs.aggregate(
+            global_reserved=Coalesce(
+                Sum(F("max_tickets") - F("claimed_count")),
+                0,
+                output_field=IntegerField(),
+            ),
+            admin_reserved=Coalesce(
+                Sum(F("max_tickets") - F("claimed_count"), filter=Q(created_by=request.user)),
+                0,
+                output_field=IntegerField(),
+            ),
+        )
+        master_reserved_unused = max(0, int(master_agg["global_reserved"] or 0))
+        admin_master_reserved = max(0, int(master_agg["admin_reserved"] or 0))
+
+        total_generated = inv_agg["inv_total"] + master_reserved_unused
+        available_unused = inv_agg["unused_direct"] + master_reserved_unused
+        claimed_count = inv_agg["claimed"]
+        expired_count = inv_agg["expired"]
+        revoked_count = inv_agg["revoked"]
+        claimed_male = inv_agg["claimed_male"]
+        claimed_female = inv_agg["claimed_female"]
+        admin_generated = inv_agg["admin_inv_total"] + admin_master_reserved
+
+        # 3. Single grouped query for latest email delivery status of claimed invitations
         latest_email_subq = (
             EmailDelivery.objects.filter(invitation=OuterRef("pk"))
             .order_by("-created_at")
             .values("status")[:1]
         )
-        claimed_with_email = inv_qs.filter(status=InvitationStatus.CLAIMED).annotate(
-            latest_email=Subquery(latest_email_subq)
+        email_rows = (
+            inv_qs.filter(status=InvitationStatus.CLAIMED)
+            .annotate(latest_email=Subquery(latest_email_subq))
+            .values("latest_email")
+            .annotate(c=Count("id"))
         )
-        emails_pending = claimed_with_email.filter(
-            latest_email__in=[EmailStatus.PENDING, EmailStatus.PROCESSING]
-        ).count()
-        emails_sent = claimed_with_email.filter(latest_email=EmailStatus.SENT).count()
-        emails_delivered = claimed_with_email.filter(latest_email=EmailStatus.DELIVERED).count()
-        emails_failed = claimed_with_email.filter(
-            latest_email__in=[EmailStatus.FAILED, EmailStatus.BOUNCED]
-        ).count()
+        email_counts = {row["latest_email"]: row["c"] for row in email_rows}
+        emails_pending = email_counts.get(EmailStatus.PENDING, 0) + email_counts.get(
+            EmailStatus.PROCESSING, 0
+        )
+        emails_sent = email_counts.get(EmailStatus.SENT, 0)
+        emails_delivered = email_counts.get(EmailStatus.DELIVERED, 0)
+        emails_failed = email_counts.get(EmailStatus.FAILED, 0) + email_counts.get(
+            EmailStatus.BOUNCED, 0
+        )
 
-        admitted_qs = CheckIn.objects.filter(invitation__event=event)
-        admitted_count = admitted_qs.count()
+        # 4. Single-pass PostgreSQL conditional aggregation across CheckIn
+        checkin_agg = CheckIn.objects.filter(invitation__event=event).aggregate(
+            admitted_total=Count("id"),
+            admitted_male=Count("id", filter=Q(invitation__gender=GuestGender.MALE)),
+            admitted_female=Count("id", filter=Q(invitation__gender=GuestGender.FEMALE)),
+        )
+        admitted_count = checkin_agg["admitted_total"]
+        admitted_male = checkin_agg["admitted_male"]
+        admitted_female = checkin_agg["admitted_female"]
         awaiting_admission = max(0, claimed_count - admitted_count)
-
-        claimed_qs = inv_qs.filter(status=InvitationStatus.CLAIMED)
-        claimed_male = claimed_qs.filter(gender=GuestGender.MALE).count()
-        claimed_female = claimed_qs.filter(gender=GuestGender.FEMALE).count()
-        admitted_male = admitted_qs.filter(invitation__gender=GuestGender.MALE).count()
-        admitted_female = admitted_qs.filter(invitation__gender=GuestGender.FEMALE).count()
 
         def _pct(part: int, total: int) -> float:
             return round((part / total) * 100, 1) if total > 0 else 0.0
@@ -213,8 +263,6 @@ class DashboardStatsView(APIView):
         # claim_rate = claimed / total_generated; attendance_rate = admitted / eligible_claimed
         claim_rate = _pct(claimed_count, total_generated)
         attendance_rate = _pct(admitted_count, claimed_count)
-
-        admin_generated = get_quota_usage(event=event, actor=request.user)
 
         return Response(
             {

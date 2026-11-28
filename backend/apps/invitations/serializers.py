@@ -156,9 +156,8 @@ class AdminInvitationListSerializer(serializers.ModelSerializer):
         return None
 
     def get_latest_email_status(self, obj: Invitation) -> str:
-        latest = getattr(obj, "_prefetched_latest_delivery", None)
-        if latest is not None:
-            return latest
+        if hasattr(obj, "_prefetched_latest_delivery"):
+            return obj._prefetched_latest_delivery or "NOT_SCHEDULED"
         delivery = obj.email_deliveries.order_by("-created_at").first()
         return delivery.status if delivery else "NOT_SCHEDULED"
 

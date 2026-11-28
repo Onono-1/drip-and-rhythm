@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar, ShieldCheck, Sparkles } from "lucide-react";
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { MotionConfig, motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
@@ -88,6 +88,7 @@ export function CinematicHomepage({ event }: { event: PublicEvent }) {
   const countdown = nowMs !== null ? computeCountdown(event, nowMs) : null;
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-dvh bg-midnight text-ivory">
       {/* Top editorial navigation bar */}
       <header className="border-b border-champagne/15 bg-midnight/90 backdrop-blur-md">
@@ -376,5 +377,6 @@ export function CinematicHomepage({ event }: { event: PublicEvent }) {
         </div>
       </footer>
     </div>
+    </MotionConfig>
   );
 }
